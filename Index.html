@@ -117,3 +117,140 @@
     </script>
 </body>
 </html>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>FlashBot AI - World Simulator</title>
+    <style>
+        body { margin: 0; background: #000; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        #ui { position: absolute; top: 20px; left: 20px; pointer-events: none; }
+        #gauge-container { width: 300px; height: 20px; background: #333; border-radius: 10px; margin-top: 10px; }
+        #gauge-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #00ffcc, #ff0055); border-radius: 10px; transition: width 0.1s; }
+        .stat { font-size: 18px; text-shadow: 2px 2px 4px #000; }
+        #speed-num { font-size: 48px; font-weight: bold; color: #00ffcc; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div class="stat">SISTEMA IA: <span id="ai-status" style="color: #00ff00;">ATIVO</span></div>
+        <div id="speed-num">0 <span style="font-size: 20px;">km/h</span></div>
+        <div id="gauge-container"><div id="gauge-fill"></div></div>
+        <div id="msg" style="margin-top: 10px; color: #ffcc00;">Aguardando Controle...</div>
+    </div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // 1. CENA E AMBIENTE
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x000000, 10, 150);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 2. CHÃO E LUZES (Simulando cidade à noite)
+        const grid = new THREE.GridHelper(2000, 100, 0x00ffcc, 0x222222);
+        scene.add(grid);
+        const light = new THREE.PointLight(0x00aaff, 10, 100);
+        scene.add(light);
+
+        // 3. O ROBÔ COM RASTRO (PROTÓTIPO V0.2)
+        const robotGroup = new THREE.Group();
+        const bodyGeo = new THREE.BoxGeometry(0.8, 1.8, 0.5);
+        const bodyMat = new THREE.MeshPhongMaterial({ color: 0x00aaff, emissive: 0x0055ff });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        robotGroup.add(body);
+        scene.add(robotGroup);
+
+        // 4. VARIÁVEIS DE CONTROLE E IA
+        let speed = 0;
+        let health = 100;
+        let isExploded = false;
+        let targetRot = 0;
+
+        function updateAI() {
+            const gps = navigator.getGamepads();
+            const gp = gps[0];
+
+            if (gp && !isExploded) {
+                document.getElementById('msg').innerText = "FlashBot Conectado";
+                
+                // INPUT HUMANO
+                let throttle = -gp.axes[1]; // Analógico pra frente
+                let steer = gp.axes[0];    // Analógico pros lados
+
+                // O CÉREBRO DA IA: LIMITADOR PREDITIVO
+                // Se estiver muito rápido, a IA reduz a sensibilidade da curva para não capotar
+                let aiStabilityFactor = Math.max(0.1, 1 - (speed / 350));
+                
+                if (Math.abs(throttle) > 0.1) speed += throttle * 1.5;
+                else speed *= 0.97; // Atrito natural
+
+                if (Math.abs(steer) > 0.1) {
+                    targetRot -= steer * 0.04 * aiStabilityFactor;
+                }
+
+                // APLICANDO ROTAÇÃO SUAVE (IA amortecendo o movimento)
+                robotGroup.rotation.y += (targetRot - robotGroup.rotation.y) * 0.1;
+
+                // FÍSICA DE DANO
+                if (speed > 290) {
+                    health -= 0.2;
+                    if (Math.random() > 0.95) createSpark(); // Efeito de faísca
+                }
+            }
+
+            // MOVIMENTO NO MUNDO
+            robotGroup.translateZ(speed / 80);
+            
+            // CÂMERA DINÂMICA (Estilo Jogos de Corrida)
+            const camDist = 5 + (speed / 50);
+            const camHeight = 2 + (speed / 100);
+            camera.position.lerp(new THREE.Vector3(
+                robotGroup.position.x - Math.sin(robotGroup.rotation.y) * camDist,
+                robotGroup.position.y + camHeight,
+                robotGroup.position.z - Math.cos(robotGroup.rotation.y) * camDist
+            ), 0.1);
+            camera.lookAt(robotGroup.position);
+
+            // UI UPDATE
+            document.getElementById('speed-num').innerText = Math.floor(speed);
+            document.getElementById('gauge-fill').style.width = (speed / 3) + "%";
+
+            if (health <= 0 && !isExploded) explode();
+        }
+
+        function createSpark() {
+            const sparkGeo = new THREE.SphereGeometry(0.1);
+            const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+            const spark = new THREE.Mesh(sparkGeo, sparkMat);
+            spark.position.copy(robotGroup.position);
+            spark.position.y = 0;
+            scene.add(spark);
+            setTimeout(() => scene.remove(spark), 100);
+        }
+
+        function explode() {
+            isExploded = true;
+            document.getElementById('ai-status').innerText = "OFFLINE - CRITICAL FAILURE";
+            document.getElementById('ai-status').style.color = "red";
+            document.getElementById('msg').innerText = "EXPLOSÃO POR FRICÇÃO ATMOSFÉRICA!";
+            body.scale.set(3, 0.1, 3);
+            body.material.color.setHex(0xff3300);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updateAI();
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
