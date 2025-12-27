@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>FlashBot 3D Simulator</title>
+    <style>
+        body { margin: 0; background: #000; color: white; font-family: sans-serif; overflow: hidden; }
+        #ui { position: absolute; top: 20px; left: 20px; pointer-events: none; }
+        .stat { font-size: 20px; margin-bottom: 5px; text-shadow: 2px 2px 4px #000; }
+        #speed-val { color: #00ffcc; font-weight: bold; font-size: 32px; }
+        #msg { color: #ff3300; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div class="stat">FLASHBOT PROTOTYPE V0.1</div>
+        <div class="stat">Velocidade: <span id="speed-val">0</span> km/h</div>
+        <div id="msg"></div>
+    </div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- CONFIGURAÇÃO DA CENA ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050505);
+        scene.fog = new THREE.Fog(0x050505, 1, 100);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- LUZES ---
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(5, 10, 7.5);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040));
+
+        // --- O ROBÔ (PROTÓTIPO CAIXA) ---
+        const geometry = new THREE.BoxGeometry(1, 2, 1);
+        const material = new THREE.MeshPhongMaterial({ color: 0x00aaff, emissive: 0x001133 });
+        const robot = new THREE.Mesh(geometry, material);
+        robot.position.y = 1;
+        scene.add(robot);
+
+        // --- O CHÃO (PISTA INFINITA) ---
+        const grid = new THREE.GridHelper(1000, 100, 0x444444, 0x222222);
+        scene.add(grid);
+
+        // --- VARIÁVEIS DE FÍSICA ---
+        let speed = 0;
+        let rotation = 0;
+        let isDead = false;
+        camera.position.set(0, 3, 7);
+
+        // --- LÓGICA DO CONTROLE E ANIMAÇÃO ---
+        function update() {
+            const gamepads = navigator.getGamepads();
+            const gp = gamepads[0];
+
+            if (gp && !isDead) {
+                // Analógico Esquerdo: Eixo 1 (Vertical = Acelerar), Eixo 0 (Horizontal = Virar)
+                let throttle = -gp.axes[1]; 
+                let steer = gp.axes[0];
+
+                if (throttle > 0.1) speed += throttle * 0.5;
+                else speed *= 0.95; // Atrito
+
+                if (Math.abs(steer) > 0.1) robot.rotation.y -= steer * 0.05;
+
+                // Limite de 300km/h
+                if (speed > 300) speed = 300;
+
+                // Lógica de explosão por velocidade
+                if (speed > 280 && Math.random() > 0.98) {
+                    explode();
+                }
+            }
+
+            // Movimentação baseada na rotação do robô
+            robot.translateZ(speed / 100);
+            
+            // Câmera segue o robô
+            const relativeCameraOffset = new THREE.Vector3(0, 3, -7);
+            const cameraOffset = relativeCameraOffset.applyMatrix4(robot.matrixWorld);
+            camera.position.lerp(cameraOffset, 0.1);
+            camera.lookAt(robot.position);
+
+            document.getElementById('speed-val').innerText = Math.floor(speed);
+        }
+
+        function explode() {
+            isDead = true;
+            document.getElementById('msg').innerText = "CATASTRÓFICO: O ROBÔ EXPLODIU A 300KM/H!";
+            robot.material.color.setHex(0xff0000);
+            robot.scale.set(2, 0.1, 2); // Simula achatamento/explosão
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
